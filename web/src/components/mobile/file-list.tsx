@@ -76,8 +76,7 @@ export default function FileList({ accountId, chatId, link }: FileListProps) {
     if (lastItem.index >= files.length - 1 && hasMore && !isLoading) {
       void handleLoadMore();
     }
-    //eslint-disable-next-line
-  }, [files.length, handleLoadMore, rowVirtual.getVirtualItems()]);
+  }, [files.length, handleLoadMore, hasMore, isLoading, rowVirtual]);
 
   useEffect(() => {
     if (files.length === 0 || !currentViewFile) {

@@ -54,9 +54,9 @@ public class Maintain {
             }
 
             final MaintainVerticle finalMaintainVerticle = maintainVerticle;
-            vertx.eventBus().consumer(EventEnum.MAINTAIN.address(), message ->
+            vertx.eventBus().consumer(EventEnum.MAINTAIN.address(), _ ->
                     vertx.undeploy(finalMaintainVerticle.deploymentID())
-                            .onSuccess(v -> {
+                            .onSuccess(_ -> {
                                 log.trace("Undeploy maintain verticle success");
                                 System.exit(0);
                             })

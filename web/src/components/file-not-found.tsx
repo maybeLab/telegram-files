@@ -97,8 +97,7 @@ export default function FileNotFount() {
         className="size-[200px] border-none bg-transparent dark:bg-transparent"
         circleClassName="stroke-black/5 stroke-1 dark:stroke-white/5"
         radius={240}
-      >
-      </OrbitingCircles>
+      ></OrbitingCircles>
       <OrbitingCircles
         className="size-[280px] border-none bg-transparent dark:bg-transparent"
         circleClassName="stroke-black/5 stroke-1 dark:stroke-white/5"

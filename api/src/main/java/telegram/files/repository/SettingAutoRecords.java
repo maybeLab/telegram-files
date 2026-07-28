@@ -1,6 +1,7 @@
 package telegram.files.repository;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.vertx.core.json.JsonObject;
 import telegram.files.MessyUtils;
 import telegram.files.Transfer;
 
@@ -92,6 +93,8 @@ public class SettingAutoRecords {
         public boolean downloadHistory;
 
         public boolean downloadCommentFiles;
+
+        public String filterExpr;
     }
 
     public static class TransferConfig {
@@ -114,6 +117,11 @@ public class SettingAutoRecords {
         public Transfer.TransferPolicy transferPolicy;
 
         public Transfer.DuplicationPolicy duplicationPolicy;
+
+        // When true, the post caption is appended to the destination file name.
+        public boolean useCaptionName;
+
+        public JsonObject extra;
     }
 
     public SettingAutoRecords() {

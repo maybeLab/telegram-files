@@ -22,12 +22,12 @@ public class MaintainVerticle extends AbstractVerticle {
 
     public void start(Promise<Void> startPromise, Runnable runnable) {
         vertx.deployVerticle(dataVerticle, Config.VIRTUAL_THREAD_DEPLOYMENT_OPTIONS)
-                .compose(r -> TelegramVerticles.initTelegramVerticles(vertx))
-                .compose(r -> {
-                    vertx.setTimer(1000, id -> runnable.run());
+                .compose(_ -> TelegramVerticles.initTelegramVerticles(vertx))
+                .compose(_ -> {
+                    vertx.setTimer(1000, _ -> runnable.run());
                     return Future.succeededFuture();
                 })
-                .onSuccess(id -> startPromise.complete())
+                .onSuccess(_ -> startPromise.complete())
                 .onFailure(startPromise::fail);
     }
 

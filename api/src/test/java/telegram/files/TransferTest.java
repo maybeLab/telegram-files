@@ -1,8 +1,10 @@
 package telegram.files;
 
 import cn.hutool.core.io.FileUtil;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import telegram.files.Transfer.DuplicationPolicy;
 import telegram.files.Transfer.TransferPolicy;
@@ -130,6 +132,24 @@ class TransferTest {
         verify(mockStatusUpdater, times(1)).accept(argThat(
                 status -> status.transferStatus() == FileRecord.TransferStatus.error
         ));
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+", disabledReason = "Requires OPENAI_API_KEY environment variable")
+    void testGroupByAI_getTransferPath() {
+        SettingAutoRecords.TransferRule transferRule = new SettingAutoRecords.TransferRule();
+        transferRule.destination = "/tmp";
+        transferRule.extra = JsonObject.of(
+                "promptTemplate", """
+                        Please categorize the following file into one of these categories: Documents, Images, Videos, Audio, Others.
+                        File name: {file_name}
+                        """
+        );
+        when(mockFileRecord.fileName()).thenReturn("As_Long_as_You_Love_Me-Backstreet_Boys-HQ.flac");
+        Transfer.GroupByAI groupByAI = new Transfer.GroupByAI(transferRule);
+        String path = groupByAI.getTransferPath(mockFileRecord);
+        System.out.println("Obtained transfer path: " + path);
+        assertNotNull(path);
     }
 
     private String mockWaitingTransfer(Path tempDir, String fileName) {

@@ -1,4 +1,4 @@
-FROM gradle:8.10-jdk21-alpine AS api-builder
+FROM gradle:8.10-jdk23-alpine AS api-builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ RUN gradle shadowJar --no-daemon && \
     cp /app/build/libs/*.jar /app/api.jar && \
     jdeps --print-module-deps --ignore-missing-deps /app/api.jar > /app/dependencies.txt
 
-FROM eclipse-temurin:21-jdk-alpine AS runtime-builder
+FROM eclipse-temurin:23-jdk-alpine AS runtime-builder
 
 WORKDIR /custom-jre
 
@@ -42,7 +42,7 @@ RUN npm ci --frozen-lockfile
 COPY ./web .
 RUN npm run build
 
-FROM alpine:3.14.10 AS final
+FROM alpine:3.18.12 AS final
 
 WORKDIR /app
 
@@ -54,7 +54,7 @@ ENV JAVA_HOME=/jre \
 
 RUN addgroup -S tf && \
     adduser -S -G tf tf && \
-    apk add --no-cache nginx wget curl unzip tini su-exec gettext openssl libstdc++ gcompat libc6-compat && \
+    apk add --no-cache nginx wget curl unzip tini su-exec gettext openssl3 libstdc++ gcompat libc6-compat && \
     rm -rf /tmp/* /var/tmp/* && \
     touch /run/nginx.pid && \
     chown -R tf:tf /app /etc/nginx /var/lib/nginx /var/log/nginx /run/nginx.pid && \

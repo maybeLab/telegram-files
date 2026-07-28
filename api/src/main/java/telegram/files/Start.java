@@ -13,7 +13,7 @@ public class Start {
 
     private static final Log log = LogFactory.get();
 
-    public static final String VERSION = "0.2.4";
+    public static final String VERSION = "0.3.0";
 
     private static final CountDownLatch shutdownLatch = new CountDownLatch(1);
 
@@ -37,13 +37,13 @@ public class Start {
         }));
 
         try {
-            sun.misc.Signal.handle(new sun.misc.Signal("TERM"), signal -> {
+            sun.misc.Signal.handle(new sun.misc.Signal("TERM"), _ -> {
                 log.info("📥 Received SIGTERM signal");
                 close();
                 System.exit(0);
             });
 
-            sun.misc.Signal.handle(new sun.misc.Signal("INT"), signal -> {
+            sun.misc.Signal.handle(new sun.misc.Signal("INT"), _ -> {
                 log.info("📥 Received SIGINT signal");
                 close();
                 System.exit(0);
@@ -55,8 +55,8 @@ public class Start {
 
     private static void deployVerticles() {
         vertx.deployVerticle(dataVerticle)
-                .compose(id -> vertx.deployVerticle(httpVerticle))
-                .onSuccess(id -> log.info("🚀 Start success"))
+                .compose(_ -> vertx.deployVerticle(httpVerticle))
+                .onSuccess(_ -> log.info("🚀 Start success"))
                 .onFailure(err -> {
                     log.error("😱 Start failed", err);
                     System.exit(1);
@@ -68,7 +68,7 @@ public class Start {
             return;
         }
         vertx.undeploy(httpVerticle.deploymentID())
-                .compose(r -> vertx.undeploy(dataVerticle.deploymentID()))
+                .compose(_ -> vertx.undeploy(dataVerticle.deploymentID()))
                 .onComplete(res -> {
                     if (res.succeeded()) {
                         log.info("👋 Shutdown success");

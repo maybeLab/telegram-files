@@ -24,10 +24,13 @@ import { Button } from "@/components/ui/button";
 import ThemeToggleButton from "@/components/theme-toggle-button";
 import AccountSelect from "@/components/account-select";
 import { useSearchParams } from "next/navigation";
+import { useSettings } from "@/hooks/use-settings";
 
 export function Header() {
   const useTelegramAccountProps = useTelegramAccount();
-  const { connectionStatus, accountDownloadSpeed } = useWebsocket();
+  const { connectionStatus, accountDownloadSpeed, reconnect, telegramConnectionState } =
+    useWebsocket();
+  const { settings } = useSettings();
   const isMobile = useIsMobile();
   const [showMore, setShowMore] = useState(false);
   const searchParams = useSearchParams();
@@ -58,9 +61,9 @@ export function Header() {
           <div className="flex items-center gap-2">
             {accountDownloadSpeed !== 0 && (
               <TooltipWrapper content="Current account download speed">
-                <div className="flex max-w-20 items-center gap-2 overflow-hidden text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 overflow-hidden text-sm text-muted-foreground">
                   <span className="flex-1 text-nowrap">
-                    {`${prettyBytes(accountDownloadSpeed, { bits: true })}/s`}
+                    {`${prettyBytes(accountDownloadSpeed, { bits: settings?.speedUnits === 'bits' })}/s`}
                   </span>
                   <Download className="h-4 w-4 flex-shrink-0" />
                 </div>
@@ -68,10 +71,37 @@ export function Header() {
             )}
 
             {connectionStatus && (
-              <TooltipWrapper content="WebSocket connection status">
+              <TooltipWrapper
+                content={
+                  connectionStatus === "Open"
+                    ? "Live updates connected"
+                    : "Live updates disconnected — click to reconnect"
+                }
+              >
                 <Badge
                   variant={
                     connectionStatus === "Open" ? "default" : "secondary"
+                  }
+                  className={
+                    connectionStatus !== "Open" ? "cursor-pointer" : undefined
+                  }
+                  role={connectionStatus !== "Open" ? "button" : undefined}
+                  tabIndex={connectionStatus !== "Open" ? 0 : undefined}
+                  aria-label={
+                    connectionStatus !== "Open"
+                      ? "Reconnect live updates"
+                      : undefined
+                  }
+                  onClick={connectionStatus !== "Open" ? reconnect : undefined}
+                  onKeyDown={
+                    connectionStatus !== "Open"
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            reconnect();
+                          }
+                        }
+                      : undefined
                   }
                 >
                   {connectionStatus === "Open" ? (
@@ -80,6 +110,15 @@ export function Header() {
                     <UnplugIcon className="mr-1 h-4 w-4" />
                   )}
                   {connectionStatus}
+                </Badge>
+              </TooltipWrapper>
+            )}
+
+            {telegramConnectionState && telegramConnectionState !== "ready" && (
+              <TooltipWrapper content="Telegram connection state">
+                <Badge variant="secondary">
+                  <UnplugIcon className="mr-1 h-4 w-4" />
+                  Telegram: {telegramConnectionState}
                 </Badge>
               </TooltipWrapper>
             )}

@@ -11,8 +11,7 @@ import {
 import { type TelegramChat } from "@/lib/types";
 import UseIsMobile from "@/hooks/use-is-mobile";
 
-interface AutoDownloadButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface AutoDownloadButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   auto?: TelegramChat["auto"];
 }
 

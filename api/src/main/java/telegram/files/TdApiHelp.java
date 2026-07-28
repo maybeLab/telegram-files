@@ -278,7 +278,7 @@ public class TdApiHelp {
                     message.id,
                     message.mediaAlbumId,
                     message.date,
-                    message.hasSensitiveContent,
+                    message.restrictionInfo != null && message.restrictionInfo.hasSensitiveContent,
                     thumbnail.file.size == 0 ? thumbnail.file.expectedSize : thumbnail.file.size,
                     thumbnail.file.local == null ? 0 : thumbnail.file.local.downloadedSize,
                     "thumbnail",
@@ -329,7 +329,7 @@ public class TdApiHelp {
                     message.id,
                     message.mediaAlbumId,
                     message.date,
-                    message.hasSensitiveContent,
+                    message.restrictionInfo != null && message.restrictionInfo.hasSensitiveContent,
                     file.size == 0 ? file.expectedSize : file.size,
                     file.local == null ? 0 : file.local.downloadedSize,
                     "photo",
@@ -363,6 +363,37 @@ public class TdApiHelp {
                     "height", photo.height,
                     "type", photo.type);
         }
+
+        @Override
+        public TdApi.Thumbnail getThumbnail() {
+            TdApi.PhotoSize[] sizes = content.photo.sizes;
+            if (sizes == null || sizes.length == 0) {
+                return null;
+            }
+            TdApi.PhotoSize fullSize = sizes[sizes.length - 1];
+            // Prefer the ~320px "m" box: crisp enough for a preview yet small (~10-30KB).
+            TdApi.PhotoSize preview = null;
+            for (TdApi.PhotoSize size : sizes) {
+                if ("m".equals(size.type)) {
+                    preview = size;
+                    break;
+                }
+            }
+            // Otherwise fall back to the smallest available size.
+            if (preview == null) {
+                preview = sizes[0];
+                for (TdApi.PhotoSize size : sizes) {
+                    if (Math.max(size.width, size.height) < Math.max(preview.width, preview.height)) {
+                        preview = size;
+                    }
+                }
+            }
+            // If the only available size is the full-resolution image, there's no lighter preview.
+            if (preview.photo.remote.uniqueId.equals(fullSize.photo.remote.uniqueId)) {
+                return null;
+            }
+            return new TdApi.Thumbnail(new TdApi.ThumbnailFormatJpeg(), preview.width, preview.height, preview.photo);
+        }
     }
 
     public static class VideoHandler extends FileHandler<TdApi.MessageVideo> {
@@ -392,7 +423,7 @@ public class TdApiHelp {
                     message.id,
                     message.mediaAlbumId,
                     message.date,
-                    message.hasSensitiveContent,
+                    message.restrictionInfo != null && message.restrictionInfo.hasSensitiveContent,
                     file.size == 0 ? file.expectedSize : file.size,
                     file.local == null ? 0 : file.local.downloadedSize,
                     "video",
@@ -461,7 +492,7 @@ public class TdApiHelp {
                     message.id,
                     message.mediaAlbumId,
                     message.date,
-                    message.hasSensitiveContent,
+                    message.restrictionInfo != null && message.restrictionInfo.hasSensitiveContent,
                     file.size == 0 ? file.expectedSize : file.size,
                     file.local == null ? 0 : file.local.downloadedSize,
                     "audio",
@@ -525,7 +556,7 @@ public class TdApiHelp {
                     message.id,
                     message.mediaAlbumId,
                     message.date,
-                    message.hasSensitiveContent,
+                    message.restrictionInfo != null && message.restrictionInfo.hasSensitiveContent,
                     file.size == 0 ? file.expectedSize : file.size,
                     file.local == null ? 0 : file.local.downloadedSize,
                     "file",

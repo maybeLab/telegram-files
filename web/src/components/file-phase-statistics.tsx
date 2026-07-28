@@ -21,6 +21,7 @@ import {
   YAxis,
 } from "recharts";
 import prettyBytes from "pretty-bytes";
+import { useSettings } from "@/hooks/use-settings";
 
 // Type definitions
 type TimeRange = "1" | "2" | "3" | "4";
@@ -88,6 +89,7 @@ const axisStyle = {
 
 const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>("1");
+  const { settings } = useSettings();
 
   const { data, error, isLoading } = useSWR<ApiResponse, Error>(
     `/telegram/${telegramId}/download-statistics?type=phase&timeRange=${timeRange}`,
@@ -160,7 +162,9 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
                   />
                   <YAxis
                     tickFormatter={(value: number) =>
-                      prettyBytes(value, { bits: true })
+                      prettyBytes(value, {
+                        bits: settings?.speedUnits === "bits",
+                      })
                     }
                     tick={axisStyle}
                     tickLine={false}
@@ -169,7 +173,9 @@ const TelegramStats: React.FC<TelegramStatsProps> = ({ telegramId }) => {
                   />
                   <Tooltip
                     formatter={(value: number) =>
-                      prettyBytes(value, { bits: true })
+                      prettyBytes(value, {
+                        bits: settings?.speedUnits === "bits",
+                      })
                     }
                     contentStyle={{
                       backgroundColor: "rgba(255, 255, 255, 0.9)",

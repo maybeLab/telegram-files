@@ -20,6 +20,36 @@ interface FileTypeFilterProps {
   onChange: (type: FileType | "all") => void;
 }
 
+// 把子组件移到外部
+interface FileTypeSelectItemProps {
+  value: FileType;
+  counts?: Record<FileType, number>;
+  isLoading: boolean;
+}
+
+const FileTypeSelectItem = ({
+  value,
+  counts,
+  isLoading,
+}: FileTypeSelectItemProps) => {
+  return (
+    <SelectItem value={value}>
+      <div className="flex items-center gap-5">
+        <span className="w-10">
+          {value.charAt(0).toUpperCase() + value.slice(1)}
+        </span>
+        {isLoading ? (
+          <Ellipsis className="h-4 w-4 animate-pulse" />
+        ) : (
+          <span className="text-xs text-gray-400">
+            {counts?.[value] ? `(${counts[value]})` : "(0)"}
+          </span>
+        )}
+      </div>
+    </SelectItem>
+  );
+};
+
 export default function FileTypeFilter({
   offline,
   telegramId,
@@ -35,25 +65,6 @@ export default function FileTypeFilter({
   const handleTypeChange = (value: FileType | "all") => {
     setLocalType(value);
     onChange(value);
-  };
-
-  const FileTypeSelectItem = ({ value }: { value: FileType }) => {
-    return (
-      <SelectItem value={value}>
-        <div className="flex items-center gap-5">
-          <span className="w-10">
-            {value.charAt(0).toUpperCase() + value.slice(1)}
-          </span>
-          {isLoading ? (
-            <Ellipsis className="h-4 w-4 animate-pulse" />
-          ) : (
-            <span className="text-xs text-gray-400">
-              {counts?.[value] ? `(${counts[value]})` : "(0)"}
-            </span>
-          )}
-        </div>
-      </SelectItem>
-    );
   };
 
   useEffect(() => {
@@ -72,11 +83,31 @@ export default function FileTypeFilter({
         </SelectTrigger>
         <SelectContent>
           {offline && <SelectItem value="all">All Files</SelectItem>}
-          <FileTypeSelectItem value="media" />
-          <FileTypeSelectItem value="photo" />
-          <FileTypeSelectItem value="video" />
-          <FileTypeSelectItem value="audio" />
-          <FileTypeSelectItem value="file" />
+          <FileTypeSelectItem
+            value="media"
+            counts={counts}
+            isLoading={isLoading}
+          />
+          <FileTypeSelectItem
+            value="photo"
+            counts={counts}
+            isLoading={isLoading}
+          />
+          <FileTypeSelectItem
+            value="video"
+            counts={counts}
+            isLoading={isLoading}
+          />
+          <FileTypeSelectItem
+            value="audio"
+            counts={counts}
+            isLoading={isLoading}
+          />
+          <FileTypeSelectItem
+            value="file"
+            counts={counts}
+            isLoading={isLoading}
+          />
         </SelectContent>
       </Select>
     </div>

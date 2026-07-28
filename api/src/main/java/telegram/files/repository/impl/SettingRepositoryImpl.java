@@ -38,8 +38,8 @@ public class SettingRepositoryImpl extends AbstractSqlRepository implements Sett
                                 ON CONFLICT (key) DO UPDATE SET value = #{value}""")
                 .mapFrom(SettingRecord.PARAM_MAPPER)
                 .execute(new SettingRecord(key, value))
-                .map(r -> new SettingRecord(key, value))
-                .onSuccess(r -> log.trace("Successfully created or updated setting record: %s".formatted(key)))
+                .map(_ -> new SettingRecord(key, value))
+                .onSuccess(_ -> log.trace("Successfully created or updated setting record: %s".formatted(key)))
                 .onFailure(
                         err -> log.error("Failed to create or update setting record: %s".formatted(err.getMessage()))
                 );
@@ -63,7 +63,7 @@ public class SettingRepositoryImpl extends AbstractSqlRepository implements Sett
                 .mapTo(SettingRecord.ROW_MAPPER)
                 .execute(Collections.emptyMap())
                 .map(IterUtil::toList)
-                .onSuccess(r -> log.trace("Successfully fetched setting record for keys: " + keyStr))
+                .onSuccess(_ -> log.trace("Successfully fetched setting record for keys: " + keyStr))
                 .onFailure(
                         err -> log.error("Failed to fetch setting record: %s".formatted(err.getMessage()))
                 );
@@ -84,7 +84,7 @@ public class SettingRepositoryImpl extends AbstractSqlRepository implements Sett
                     }
                     return key.defaultValue == null ? null : (T) key.defaultValue;
                 })
-                .onSuccess(r -> log.trace("Successfully fetched setting record for key: " + key))
+                .onSuccess(_ -> log.trace("Successfully fetched setting record for key: " + key))
                 .onFailure(
                         err -> log.error("Failed to fetch setting record: %s".formatted(err.getMessage()))
                 );

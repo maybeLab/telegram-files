@@ -45,13 +45,8 @@ public class AutomationsHolder {
                         return;
                     }
                     settingAutoRecords.automations.forEach(item -> TelegramVerticles.get(item.telegramId)
-                            .ifPresentOrElse(telegramVerticle -> {
-                                if (telegramVerticle.authorized) {
-                                    AUTO_RECORDS.add(item);
-                                } else {
-                                    log.warn("Init auto records fail. Telegram verticle not authorized: %s".formatted(item.telegramId));
-                                }
-                            }, () -> log.warn("Init auto records fail. Telegram verticle not found: %s".formatted(item.telegramId))));
+                            .ifPresentOrElse(_ -> AUTO_RECORDS.add(item),
+                                    () -> log.warn("Init auto records fail. Telegram verticle not found: %s".formatted(item.telegramId))));
                 })
                 .onFailure(e -> log.error("Init auto records failed!", e))
                 .mapEmpty();

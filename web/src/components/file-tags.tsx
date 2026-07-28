@@ -199,7 +199,7 @@ export default function FileTags({ file, onTagsUpdate }: FileTagsProps) {
         <HoverCardContent className="w-80" side="right">
           <TagsSelector
             value={tags}
-            onChange={setTags}
+            onChangeAction={setTags}
             tags={split(",", settings?.tags)}
           />
         </HoverCardContent>
@@ -279,7 +279,7 @@ export function MobileFileTagsDrawer({
           <DrawerTitle className="mb-4">Edit Tags</DrawerTitle>
           <TagsSelector
             value={tags}
-            onChange={setTags}
+            onChangeAction={setTags}
             tags={split(",", settings?.tags)}
           />
         </div>
@@ -347,7 +347,7 @@ export function BatchFileTags({ files, onTagsUpdate }: BatchFileTagsProps) {
         </DialogDescription>
         <TagsSelector
           value={tags}
-          onChange={setTags}
+          onChangeAction={setTags}
           tags={split(",", settings?.tags)}
         />
         <DialogFooter>

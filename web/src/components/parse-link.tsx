@@ -165,7 +165,12 @@ function MobileParseLinkDrawer({
 }) {
   const [link, setLink] = useState<string>("");
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} disablePreventScroll={true}>
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      disablePreventScroll={true}
+      repositionInputs={false}
+    >
       <DrawerContent className="w-full md:w-2/3" aria-describedby={undefined}>
         <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
 

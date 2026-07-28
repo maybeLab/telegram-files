@@ -10,7 +10,7 @@ import {
   TransferPolices,
   type TransferPolicy,
 } from "@/lib/types";
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -46,6 +46,8 @@ import {
 } from "@/components/ui/command";
 import { useMutationObserver } from "@/hooks/use-mutation-observer";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import Link from "next/link";
 
 interface AutomationFormProps {
   auto: Auto;
@@ -170,8 +172,8 @@ export default function AutomationForm({
               <div className="flex items-start">
                 <span className="mr-3 mt-1.5 h-3 w-2 flex-shrink-0 rounded-full bg-cyan-400"></span>
                 <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
-                  This will enable preload for this chat. All files will be
-                  loaded, but not downloaded, then you can search offline.
+                  This will enable auto transfer for this chat. Downloaded files
+                  will be transferred to the specified location automatically.
                 </p>
               </div>
             </div>
@@ -207,6 +209,15 @@ function DownloadRule({ value, onChange }: DownloadRuleProps) {
     });
   };
 
+  const handleFilterExprChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+  ) => {
+    onChange({
+      ...value,
+      filterExpr: e.target.value,
+    });
+  };
+
   const handleFileTypeSelect = (type: string) => {
     if (value.fileTypes.includes(type as Exclude<FileType, "media">)) {
       return;
@@ -234,14 +245,34 @@ function DownloadRule({ value, onChange }: DownloadRuleProps) {
         <AccordionContent>
           <div className="flex flex-col space-y-4 rounded-md border p-4 shadow">
             <div className="flex flex-col space-y-2">
-              <Label htmlFor="filter-keyword">Filter Keyword</Label>
+              <Label htmlFor="query-keyword">Query Keyword</Label>
               <Input
-                id="filter-keyword"
+                id="query-keyword"
                 type="text"
                 className="w-full"
                 placeholder="Enter a keyword to filter files"
                 value={value.query}
                 onChange={handleQueryChange}
+              />
+            </div>
+            <div className="flex flex-col space-y-2">
+              <Label htmlFor="filter-expr">
+                Filter Expression
+                <Link
+                  href="https://github.com/jarvis2f/telegram-files/blob/main/misc/filter-expression-guide.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 text-sm text-blue-600 hover:underline"
+                >
+                  (Learn more)
+                </Link>
+              </Label>
+              <Textarea
+                id="filter-expr"
+                className="w-full"
+                placeholder="Enter a filter expression (e.g., str:contains(content.text.text, 'Hello') and id > 1000)"
+                value={value.filterExpr}
+                onChange={handleFilterExprChange}
               />
             </div>
 
@@ -326,6 +357,7 @@ interface TransferRuleProps {
 }
 
 function TransferRule({ value, onChange }: TransferRuleProps) {
+  const captionNameId = useId();
   const handleTransferRuleChange = (changes: Partial<AutoTransferRule>) => {
     onChange({
       ...value,
@@ -370,6 +402,29 @@ function TransferRule({ value, onChange }: TransferRuleProps) {
               />
             </div>
 
+            {value.transferPolicy === "GROUP_BY_AI" && (
+              <div className="flex flex-col space-y-2">
+                <Label htmlFor="prompt-template">
+                  AI Classification Prompt Template
+                </Label>
+                <Textarea
+                  id="prompt-template"
+                  className="w-full"
+                  rows={4}
+                  placeholder="Enter a prompt template to guide AI classification"
+                  value={value.extra.promptTemplate || ""}
+                  onChange={(e) =>
+                    handleTransferRuleChange({
+                      extra: {
+                        ...value.extra,
+                        promptTemplate: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            )}
+
             <div className="flex flex-col space-y-2">
               <Label htmlFor="duplication-policy">Duplication Policy</Label>
               <PolicySelect
@@ -399,6 +454,24 @@ function TransferRule({ value, onChange }: TransferRuleProps) {
                 location.
               </p>
             </div>
+
+            <div className="rounded-md border p-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor={captionNameId}>Add caption to file name</Label>
+                <Switch
+                  id={captionNameId}
+                  checked={value.useCaptionName ?? false}
+                  onCheckedChange={(checked) =>
+                    handleTransferRuleChange({ useCaptionName: checked })
+                  }
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Append the post caption to the transferred file name (e.g.
+                name_caption.jpg). Falls back to the original name when the post
+                has no caption.
+              </p>
+            </div>
           </div>
         </AccordionContent>
       </AccordionItem>
@@ -413,6 +486,10 @@ const PolicyLegends: Record<
     description: string | React.ReactNode;
   }
 > = {
+  DIRECT: {
+    title: "Direct",
+    description: "Transfer files directly to the destination folder.",
+  },
   GROUP_BY_CHAT: {
     title: "Group by Chat",
     description: (
@@ -438,6 +515,30 @@ const PolicyLegends: Record<
         <p className="text-xs text-muted-foreground">Example:</p>
         <p className="inline-block rounded bg-gray-100 p-1 text-xs text-muted-foreground dark:bg-gray-800 dark:text-gray-300">
           {"/${Destination Folder}/${File Type}/${file}"}
+        </p>
+      </div>
+    ),
+  },
+  GROUP_BY_AI: {
+    title: "Group by AI",
+    description: (
+      <div className="space-y-2">
+        <p className="text-sm">
+          Use AI to classify files and transfer them to different folders based
+          on their content.
+        </p>
+        <p className="text-sm">
+          You can write a prompt to guide the AI in classifying the files. Like:
+        </p>
+        <p className="inline-block rounded bg-gray-100 p-1 text-xs text-muted-foreground dark:bg-gray-800 dark:text-gray-300">
+          Classify the following file into one of the categories: Work,
+          Personal, Important, Others. <br />
+          File name: {"{file_name}"} <br />
+          Respond with only the category name.
+        </p>
+        <p className="text-sm">
+          You can use {"{FileRecord Field}"} in the prompt to provide more
+          context to the AI.
         </p>
       </div>
     ),

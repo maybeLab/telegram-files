@@ -46,9 +46,9 @@ public class TransferVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) {
-        initEventConsumer().onSuccess(v -> {
-            vertx.setPeriodic(0, HISTORY_SCAN_INTERVAL, id -> addHistoryFiles());
-            vertx.setPeriodic(0, TRANSFER_INTERVAL, id -> startTransfer());
+        initEventConsumer().onSuccess(_ -> {
+            vertx.setPeriodic(0, HISTORY_SCAN_INTERVAL, _ -> addHistoryFiles());
+            vertx.setPeriodic(0, TRANSFER_INTERVAL, _ -> startTransfer());
 
             log.info("""
                     Transfer verticle started!
@@ -93,6 +93,10 @@ public class TransferVerticle extends AbstractVerticle {
                     return;
                 }
                 FileRecord fileRecord = Future.await(DataVerticle.fileRepository.getByUniqueId((String) data.get("uniqueId")));
+                if (fileRecord == null || "thumbnail".equals(fileRecord.type())) {
+                    // Thumbnails are internal preview files; never transfer them.
+                    return;
+                }
 
                 SettingAutoRecords.Automation automation = null;
                 if (fileRecord.threadChatId() != 0 && fileRecord.messageThreadId() != 0 && fileRecord.threadChatId() == fileRecord.chatId()) {
@@ -150,6 +154,10 @@ public class TransferVerticle extends AbstractVerticle {
 
             int count = 0;
             for (FileRecord fileRecord : files) {
+                if ("thumbnail".equals(fileRecord.type())) {
+                    // Thumbnails are internal preview files; never transfer them.
+                    continue;
+                }
                 if (addWaitingTransferFile(fileRecord)) {
                     count++;
                 }
@@ -192,7 +200,7 @@ public class TransferVerticle extends AbstractVerticle {
             }
         }
 
-        return transfers.computeIfAbsent(automation.uniqueKey(), k -> {
+        return transfers.computeIfAbsent(automation.uniqueKey(), _ -> {
             Transfer transfer = Transfer.create(transferRule);
             transfer.transferStatusUpdated = updated ->
                     updateTransferStatus(updated.fileRecord(), updated.transferStatus(), updated.localPath());

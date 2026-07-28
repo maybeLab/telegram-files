@@ -104,7 +104,7 @@ On unRaid, install from the Community Repositories by searching for `telegram-fi
 
 Before getting started with telegram-files, ensure your runtime environment meets the following requirements:
 
-- **Programming Language:** JDK21,TypeScript
+- **Programming Language:** JDK23,TypeScript
 - **Package Manager:** Gradle,Npm
 - **Container Runtime:** Docker
 

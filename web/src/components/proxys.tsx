@@ -66,7 +66,6 @@ export default function Proxys({
     useSWRMutation<{ id: string }, Error>(
       telegramId ? `/telegram/${telegramId}/toggle-proxy` : undefined,
       async (key: string) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return await request(key, {
           method: "POST",
           body: JSON.stringify({

@@ -4,7 +4,7 @@
 import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
-import {AlertCircle, AlertTriangle, CheckCircle, Info} from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle, Info } from "lucide-react";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -12,24 +12,24 @@ const TOAST_REMOVE_DELAY = 1000000;
 const TOAST_VARIANTS = {
   success: {
     icon: CheckCircle,
-    iconColor: "text-green-500 dark:text-green-300"
+    iconColor: "text-green-500 dark:text-green-300",
   },
   error: {
     icon: AlertCircle,
-    iconColor: "text-red-500 dark:text-red-300"
+    iconColor: "text-red-500 dark:text-red-300",
   },
   warning: {
     icon: AlertTriangle,
-    iconColor: "text-amber-500 dark:text-amber-300"
+    iconColor: "text-amber-500 dark:text-amber-300",
   },
   info: {
     icon: Info,
-    iconColor: "text-blue-500 dark:text-blue-300"
+    iconColor: "text-blue-500 dark:text-blue-300",
   },
   default: {
     icon: null,
-    iconColor: "text-gray-500 dark:text-gray-300"
-  }
+    iconColor: "text-gray-500 dark:text-gray-300",
+  },
 };
 
 type ToasterToast = ToastProps & {

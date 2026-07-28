@@ -29,9 +29,9 @@ public class PreloadMessageVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) {
         initEventConsumer()
-                .onSuccess(r -> {
+                .onSuccess(_ -> {
                     vertx.setPeriodic(0, HISTORY_SCAN_INTERVAL,
-                            id -> autoRecords.getPreloadEnabledItems()
+                            _ -> autoRecords.getPreloadEnabledItems()
                                     .stream()
                                     .filter(auto -> auto.isNotComplete(SettingAutoRecords.HISTORY_PRELOAD_STATE))
                                     .forEach(auto -> addHistoryMessage(auto, System.currentTimeMillis())));
@@ -69,12 +69,24 @@ public class PreloadMessageVerticle extends AbstractVerticle {
         }
 
         TelegramVerticle telegramVerticle = TelegramVerticles.getOrElseThrow(auto.telegramId);
+        if (!telegramVerticle.authorized) {
+            return;
+        }
         TdApi.SearchChatMessages searchChatMessages = new TdApi.SearchChatMessages();
         searchChatMessages.chatId = auto.chatId;
         searchChatMessages.fromMessageId = auto.preload.nextFromMessageId;
         searchChatMessages.limit = 100;
         TdApi.FoundChatMessages foundChatMessages = Future.await(telegramVerticle.client.execute(searchChatMessages)
-                .onFailure(r -> log.error("Search chat messages failed! TelegramId: %d ChatId: %d".formatted(auto.telegramId, auto.chatId), r))
+                .onFailure(r -> {
+                    log.warn("Search chat messages failed! TelegramId: %d ChatId: %d".formatted(auto.telegramId, auto.chatId), r);
+                    if (r instanceof TelegramRunException tre) {
+                        TdApi.Error error = tre.getError();
+                        if (error.code == 400 && ("Can't access the chat".equals(error.message))) {
+                            log.error("%s Can't access the chat, stop preload history message!".formatted(auto.uniqueKey()));
+                            auto.complete(SettingAutoRecords.HISTORY_PRELOAD_STATE);
+                        }
+                    }
+                })
         );
         if (foundChatMessages == null || foundChatMessages.messages.length == 0) {
             log.debug("%s No more history message found! TelegramId: %d ChatId: %d".formatted(auto.uniqueKey(), auto.telegramId, auto.chatId));
@@ -115,7 +127,7 @@ public class PreloadMessageVerticle extends AbstractVerticle {
 
                     Future.all(
                                     telegramVerticle.client.execute(new TdApi.GetMessage(chatId, messageId)),
-                                    telegramVerticle.client.execute(new TdApi.GetMessageThread(chatId, messageId))
+                                    telegramVerticle.client.execute(new TdApi.GetMessageThread(chatId, messageId), true)
                             )
                             .onSuccess(result -> {
                                 TdApi.Message message = result.resultAt(0);

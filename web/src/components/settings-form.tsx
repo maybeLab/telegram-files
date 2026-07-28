@@ -19,6 +19,7 @@ import { type SettingKey } from "@/lib/types";
 import { Slider } from "@/components/ui/slider";
 import { TagsInput } from "@/components/ui/tags-input";
 import { split } from "lodash";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 export default function SettingsForm() {
   const { settings, setSetting, updateSettings } = useSettings();
@@ -53,7 +54,7 @@ export default function SettingsForm() {
       className="flex h-full flex-col overflow-hidden"
     >
       <div className="no-scrollbar flex flex-col space-y-4 overflow-y-scroll">
-        <p className="rounded-md bg-gray-50 p-2 text-sm text-muted-foreground shadow dark:bg-gray-700">
+        <p className="rounded-md bg-gray-50 p-2 text-sm text-muted-foreground dark:bg-gray-700">
           <Bell className="mr-2 inline-block h-4 w-4" />
           These settings will be applied to all accounts.
         </p>
@@ -73,6 +74,34 @@ export default function SettingsForm() {
             >
               <Copy className="h-4 w-4" />
             </Button>
+          </div>
+        </div>
+        <div className="flex w-full cursor-pointer flex-col space-y-4 rounded-md border p-4 shadow">
+          <div className="flex items-center justify-between">
+            <Label>Speed Units</Label>
+            <RadioGroup
+              value={settings?.speedUnits || "bits"}
+              onValueChange={(v) => void setSetting("speedUnits", v)}
+              className="group inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+              data-state={settings?.speedUnits || "bits"}
+            >
+              <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bits]:bg-background group-data-[state=bits]:text-foreground group-data-[state=bits]:shadow">
+                bits
+                <RadioGroupItem
+                  id="enspeedUnits-bits"
+                  value="bits"
+                  className="sr-only"
+                />
+              </label>
+              <label className="inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-data-[state=bytes]:bg-background group-data-[state=bytes]:text-foreground group-data-[state=bytes]:shadow">
+                bytes
+                <RadioGroupItem
+                  id="speedUnits-bytes"
+                  value="bytes"
+                  className="sr-only"
+                />
+              </label>
+            </RadioGroup>
           </div>
         </div>
         <div
@@ -189,7 +218,6 @@ export default function SettingsForm() {
               endRequired={true}
               includeSeconds={false}
               timeRange={
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 settings?.autoDownloadTimeLimited
                   ? JSON.parse(settings.autoDownloadTimeLimited)
                   : { startTime: "00:00", endTime: "00:00" }

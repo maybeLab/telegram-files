@@ -4,17 +4,16 @@ import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
-import { isEqual } from "lodash";
 
 type TagsSelectorProps = {
   value: string[];
-  onChange?: (tags: string[]) => void;
+  onChangeAction?: (tags: string[]) => void;
   tags: string[];
 };
 
 export function TagsSelector({
   value = [],
-  onChange,
+  onChangeAction,
   tags,
 }: TagsSelectorProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>(value);
@@ -23,13 +22,13 @@ export function TagsSelector({
   const removeSelectedTag = (tag: string) => {
     const newTags = selectedTags.filter((t) => tag !== t);
     setSelectedTags(newTags);
-    onChange?.(newTags);
+    onChangeAction?.(newTags);
   };
 
   const addSelectedTag = (tag: string) => {
     const newTags = [...selectedTags, tag];
     setSelectedTags(newTags);
-    onChange?.(newTags);
+    onChangeAction?.(newTags);
   };
 
   const optionalTags = useMemo(() => {

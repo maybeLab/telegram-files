@@ -11,7 +11,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import org.drinkless.tdlib.TdApi;
-import org.jooq.lambda.tuple.Tuple2;
+import org.jooq.lambda.tuple.Tuple3;
 import telegram.files.repository.FileRecord;
 import telegram.files.repository.SettingAutoRecords;
 import telegram.files.repository.SettingKey;
@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -65,10 +66,10 @@ public class AutoDownloadVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) {
         initAutoDownload()
-                .compose(v -> this.initEventConsumer())
-                .onSuccess(v -> {
+                .compose(_ -> this.initEventConsumer())
+                .onSuccess(_ -> {
                     vertx.setPeriodic(0, HISTORY_SCAN_INTERVAL,
-                            id -> {
+                            _ -> {
                                 if (!isDownloadTime()) {
                                     log.debug("Auto download time limited! Skip scan history.");
                                     return;
@@ -96,7 +97,7 @@ public class AutoDownloadVerticle extends AbstractVerticle {
                                         });
                             });
                     vertx.setPeriodic(0, DOWNLOAD_INTERVAL,
-                            id -> {
+                            _ -> {
                                 if (!isDownloadTime()) {
                                     log.debug("Auto download time limited! Skip download.");
                                     return;
@@ -211,7 +212,7 @@ public class AutoDownloadVerticle extends AbstractVerticle {
         long chatId = params.chatId;
         long nextFromMessageId = params.nextFromMessageId;
         String nextFileType = params.nextFileType;
-        Tuple2<String, List<String>> rule = handleRule(params.rule);
+        Tuple3<String, List<String>, String> rule = handleRule(params.rule);
         if (StrUtil.isBlank(nextFileType)) {
             nextFileType = rule.v2.getFirst();
         }
@@ -229,15 +230,29 @@ public class AutoDownloadVerticle extends AbstractVerticle {
         }
 
         TelegramVerticle telegramVerticle = TelegramVerticles.getOrElseThrow(telegramId);
+        if (!telegramVerticle.authorized) {
+            callback.accept(new ScanResult(nextFileType, nextFromMessageId, false));
+            return;
+        }
         TdApi.SearchChatMessages searchChatMessages = new TdApi.SearchChatMessages();
         searchChatMessages.query = rule.v1;
         searchChatMessages.chatId = chatId;
         searchChatMessages.fromMessageId = nextFromMessageId;
         searchChatMessages.limit = Math.min(MAX_WAITING_LENGTH, 100);
         searchChatMessages.filter = TdApiHelp.getSearchMessagesFilter(nextFileType);
-        searchChatMessages.messageThreadId = params.messageThreadId;
+        searchChatMessages.topicId = params.messageThreadId > 0 ? new TdApi.MessageTopicThread(params.messageThreadId) : null;
+        String finalNextFileType = nextFileType;
         TdApi.FoundChatMessages foundChatMessages = Future.await(telegramVerticle.client.execute(searchChatMessages)
-                .onFailure(r -> log.error("Search chat messages failed! TelegramId: %d ChatId: %d".formatted(telegramId, chatId), r))
+                .onFailure(r -> {
+                    log.warn("Search chat messages failed! TelegramId: %d ChatId: %d".formatted(telegramId, chatId), r);
+                    if (r instanceof TelegramRunException tre) {
+                        TdApi.Error error = tre.getError();
+                        if (error.code == 400 && ("Can't access the chat".equals(error.message))) {
+                            log.error("%s Can't access the chat, stop auto download!".formatted(uniqueKey));
+                            callback.accept(new ScanResult(finalNextFileType, nextFromMessageId, true));
+                        }
+                    }
+                })
         );
         if (foundChatMessages == null) {
             callback.accept(new ScanResult(nextFileType, nextFromMessageId, false));
@@ -256,9 +271,12 @@ public class AutoDownloadVerticle extends AbstractVerticle {
                 callback.accept(new ScanResult(nextFileType, nextFromMessageId, true));
             }
         } else {
+            Predicate<TdApi.Message> predicate = MessageFilter.filter(rule.v3);
             DataVerticle.fileRepository.getFilesByUniqueId(TdApiHelp.getFileUniqueIds(Arrays.asList(foundChatMessages.messages)))
                     .onSuccess(existFiles -> {
                         List<TdApi.Message> messages = Stream.of(foundChatMessages.messages)
+                                .parallel()
+                                .filter(predicate)
                                 .filter(message -> {
                                     String uniqueId = TdApiHelp.getFileUniqueId(message);
                                     if (!existFiles.containsKey(uniqueId)) {
@@ -280,9 +298,10 @@ public class AutoDownloadVerticle extends AbstractVerticle {
         }
     }
 
-    private Tuple2<String, List<String>> handleRule(SettingAutoRecords.DownloadRule rule) {
+    private Tuple3<String, List<String>, String> handleRule(SettingAutoRecords.DownloadRule rule) {
         String query = null;
         List<String> fileTypes = DEFAULT_FILE_TYPE_ORDER;
+        String filterExpr = null;
         if (rule != null) {
             if (StrUtil.isNotBlank(rule.query)) {
                 query = rule.query;
@@ -290,8 +309,11 @@ public class AutoDownloadVerticle extends AbstractVerticle {
             if (CollUtil.isNotEmpty(rule.fileTypes)) {
                 fileTypes = rule.fileTypes;
             }
+            if (StrUtil.isNotBlank(rule.filterExpr)) {
+                filterExpr = rule.filterExpr;
+            }
         }
-        return new Tuple2<>(query, fileTypes);
+        return new Tuple3<>(query, fileTypes, filterExpr);
     }
 
     private boolean isDownloadTime() {
@@ -369,13 +391,16 @@ public class AutoDownloadVerticle extends AbstractVerticle {
         }
         log.debug("Download start! TelegramId: %d size: %d".formatted(telegramId, messages.size()));
         TelegramVerticle telegramVerticle = TelegramVerticles.getOrElseThrow(telegramId);
+        if (!telegramVerticle.authorized) {
+            return;
+        }
         int surplusSize = getSurplusSize(telegramId);
         if (surplusSize <= 0) {
             return;
         }
 
         List<MessageWrapper> downloadMessages = IntStream.range(0, Math.min(surplusSize, messages.size()))
-                .mapToObj(i -> messages.poll())
+                .mapToObj(_ -> messages.poll())
                 .toList();
         downloadMessages.forEach(messageWrapper -> {
             TdApi.Message message = messageWrapper.message;
@@ -388,7 +413,7 @@ public class AutoDownloadVerticle extends AbstractVerticle {
                         if (fileRecord.threadChatId() != 0
                             && fileRecord.messageThreadId() != 0
                             && fileRecord.threadChatId() != fileRecord.chatId()) {
-                            waitingScanThreads.computeIfAbsent(telegramId, k -> new LinkedList<>())
+                            waitingScanThreads.computeIfAbsent(telegramId, _ -> new LinkedList<>())
                                     .add(new WaitingScanThread(telegramId, fileRecord.threadChatId(), fileRecord.messageThreadId()));
                         }
                     })
@@ -405,7 +430,7 @@ public class AutoDownloadVerticle extends AbstractVerticle {
         autoRecords.getDownloadEnabledItems().stream()
                 .filter(item -> item.telegramId == telegramId && item.chatId == chatId)
                 .findFirst()
-                .flatMap(item -> TelegramVerticles.get(telegramId))
+                .flatMap(_ -> TelegramVerticles.get(telegramId))
                 .ifPresent(telegramVerticle -> {
                     if (telegramVerticle.authorized) {
                         telegramVerticle.client.execute(new TdApi.GetMessage(chatId, messageId))

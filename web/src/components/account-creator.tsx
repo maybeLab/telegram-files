@@ -31,7 +31,7 @@ import { useTelegramAccount } from "@/hooks/use-telegram-account";
 import TGDuck16Plane from "@/components/animations/tg-duck16_plane.json";
 import TGQRPlane from "@/components/animations/tg-qr-plane.json";
 import dynamic from "next/dynamic";
-import QRCodeStyling, { Options } from "qr-code-styling";
+import QRCodeStyling, { type Options } from "qr-code-styling";
 
 interface AccountCreatorProps {
   isAdd?: boolean;
@@ -59,7 +59,9 @@ export default function AccountCreator({
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
-
+  const [isDeMethodExecuting] = useDebounce(isMethodExecuting, 500, {
+    leading: true,
+  });
   const {
     trigger: triggerCreate,
     isMutating: isCreateMutating,
@@ -67,7 +69,6 @@ export default function AccountCreator({
   } = useSWRMutation<{ id: string }, Error>(
     "/telegram/create",
     async (key: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return await request(key, {
         method: "POST",
         body: JSON.stringify({
@@ -91,6 +92,7 @@ export default function AccountCreator({
         case TelegramConstructor.WAIT_PHONE_NUMBER:
         case TelegramConstructor.WAIT_CODE:
         case TelegramConstructor.WAIT_PASSWORD:
+        case TelegramConstructor.WAIT_PREMIUM_PURCHASE:
           setAuthState(state.constructor);
           break;
         case TelegramConstructor.WAIT_OTHER_DEVICE_CONFIRMATION:
@@ -111,6 +113,9 @@ export default function AccountCreator({
           }, 1000);
           break;
         default:
+          setTimeout(() => {
+            void mutate("/telegrams");
+          }, 500);
           console.log("Unknown telegram constructor:", state.constructor);
       }
     },
@@ -228,7 +233,7 @@ export default function AccountCreator({
         </p>
         <InputOTP
           id="code"
-          maxLength={5}
+          maxLength={6}
           value={code}
           disabled={isMethodExecuting}
           required
@@ -240,6 +245,7 @@ export default function AccountCreator({
             <InputOTPSlot index={2} />
             <InputOTPSlot index={3} />
             <InputOTPSlot index={4} />
+            <InputOTPSlot index={5} />
           </InputOTPGroup>
         </InputOTP>
       </div>
@@ -258,6 +264,23 @@ export default function AccountCreator({
           disabled={isMethodExecuting}
           required
         />
+        <p className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          Using passkeys instead of a password? Close this dialog, start over,
+          and use the <strong>LOG IN BY QR CODE</strong> option to authenticate
+          from an existing Telegram device.
+        </p>
+      </div>
+    ),
+    [TelegramConstructor.WAIT_PREMIUM_PURCHASE]: (
+      <div className="space-y-2 rounded border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950">
+        <p className="font-medium text-red-700 dark:text-red-400">
+          Telegram Premium Required
+        </p>
+        <p className="text-xs text-red-600 dark:text-red-500">
+          This account requires an active Telegram Premium subscription to log
+          in. Please purchase Telegram Premium in the official Telegram app and
+          try again.
+        </p>
       </div>
     ),
   };
@@ -303,13 +326,14 @@ export default function AccountCreator({
       {authState && (
         <>
           {authStateFormFields[authState]}
-          {authState !== TelegramConstructor.WAIT_OTHER_DEVICE_CONFIRMATION && (
+          {authState !== TelegramConstructor.WAIT_OTHER_DEVICE_CONFIRMATION &&
+            authState !== TelegramConstructor.WAIT_PREMIUM_PURCHASE && (
             <Button
               type="submit"
               className={cn("w-full", isMethodExecuting ? "opacity-50" : "")}
               disabled={isMethodExecuting}
             >
-              {isMethodExecuting ? (
+              {isDeMethodExecuting ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
               ) : (
                 "🚀 Submit"
@@ -323,7 +347,7 @@ export default function AccountCreator({
               disabled={isMethodExecuting}
               onClick={handleRequestQrCodeAuthentication}
             >
-              {isMethodExecuting ? (
+              {isDeMethodExecuting ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
               ) : (
                 "LOG IN BY QR CODE"

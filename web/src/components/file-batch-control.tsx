@@ -166,8 +166,7 @@ export default function FileBatchControl({
   );
 }
 
-interface ControlButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ControlButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   url: string;
   label: string;
   icon: React.ReactNode;
@@ -243,7 +242,7 @@ function ControlButton({
         chatId: file.chatId ?? 0,
         messageId: file.messageId ?? 0,
         fileId: file.id ?? 0,
-        uniqueId: file.uniqueId
+        uniqueId: file.uniqueId,
       })),
       ...extra,
     });

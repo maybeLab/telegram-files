@@ -8,6 +8,7 @@ import io.vertx.sqlclient.templates.TupleMapper;
 import org.drinkless.tdlib.TdApi;
 import telegram.files.Config;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
@@ -146,35 +147,38 @@ public record FileRecord(int id, //file id will change
                     row.getLong("reaction_count")
             );
 
-    public static TupleMapper<FileRecord> PARAM_MAPPER = TupleMapper.mapper(r ->
-            MapUtil.ofEntries(
-                    MapUtil.entry("id", r.id),
-                    MapUtil.entry("unique_id", r.uniqueId()),
-                    MapUtil.entry("telegram_id", r.telegramId()),
-                    MapUtil.entry("chat_id", r.chatId()),
-                    MapUtil.entry("message_id", r.messageId()),
-                    MapUtil.entry("media_album_id", r.mediaAlbumId()),
-                    MapUtil.entry("date", r.date()),
-                    MapUtil.entry("has_sensitive_content", r.hasSensitiveContent()),
-                    MapUtil.entry("size", r.size()),
-                    MapUtil.entry("downloaded_size", r.downloadedSize()),
-                    MapUtil.entry("type", r.type()),
-                    MapUtil.entry("mime_type", r.mimeType()),
-                    MapUtil.entry("file_name", r.fileName()),
-                    MapUtil.entry("thumbnail", r.thumbnail()),
-                    MapUtil.entry("thumbnail_unique_id", r.thumbnailUniqueId()),
-                    MapUtil.entry("caption", r.caption()),
-                    MapUtil.entry("extra", r.extra()),
-                    MapUtil.entry("local_path", r.localPath()),
-                    MapUtil.entry("download_status", r.downloadStatus()),
-                    MapUtil.entry("transfer_status", r.transferStatus()),
-                    MapUtil.entry("start_date", r.startDate()),
-                    MapUtil.entry("completion_date", r.completionDate()),
-                    MapUtil.entry("tags", r.tags()),
-                    MapUtil.entry("thread_chat_id", r.threadChatId()),
-                    MapUtil.entry("message_thread_id", r.messageThreadId()),
-                    MapUtil.entry("reaction_count", r.reactionCount())
-            ));
+    public static TupleMapper<FileRecord> PARAM_MAPPER = TupleMapper.mapper(FileRecord::toMap);
+
+    public static Map<String, Object> toMap(FileRecord r) {
+        return MapUtil.ofEntries(
+                MapUtil.entry("id", r.id),
+                MapUtil.entry("unique_id", r.uniqueId()),
+                MapUtil.entry("telegram_id", r.telegramId()),
+                MapUtil.entry("chat_id", r.chatId()),
+                MapUtil.entry("message_id", r.messageId()),
+                MapUtil.entry("media_album_id", r.mediaAlbumId()),
+                MapUtil.entry("date", r.date()),
+                MapUtil.entry("has_sensitive_content", r.hasSensitiveContent()),
+                MapUtil.entry("size", r.size()),
+                MapUtil.entry("downloaded_size", r.downloadedSize()),
+                MapUtil.entry("type", r.type()),
+                MapUtil.entry("mime_type", r.mimeType()),
+                MapUtil.entry("file_name", r.fileName()),
+                MapUtil.entry("thumbnail", r.thumbnail()),
+                MapUtil.entry("thumbnail_unique_id", r.thumbnailUniqueId()),
+                MapUtil.entry("caption", r.caption()),
+                MapUtil.entry("extra", r.extra()),
+                MapUtil.entry("local_path", r.localPath()),
+                MapUtil.entry("download_status", r.downloadStatus()),
+                MapUtil.entry("transfer_status", r.transferStatus()),
+                MapUtil.entry("start_date", r.startDate()),
+                MapUtil.entry("completion_date", r.completionDate()),
+                MapUtil.entry("tags", r.tags()),
+                MapUtil.entry("thread_chat_id", r.threadChatId()),
+                MapUtil.entry("message_thread_id", r.messageThreadId()),
+                MapUtil.entry("reaction_count", r.reactionCount())
+        );
+    }
 
     public FileRecord withSourceField(int id, long downloadedSize) {
         return new FileRecord(id, uniqueId, telegramId, chatId, messageId, mediaAlbumId, date, hasSensitiveContent, size, downloadedSize, type, mimeType, fileName, thumbnail, thumbnailUniqueId, caption, extra, localPath, downloadStatus, transferStatus, startDate, completionDate, tags, threadChatId, messageThreadId, reactionCount);

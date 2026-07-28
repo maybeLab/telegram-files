@@ -24,6 +24,10 @@ public enum SettingKey {
      * Interval for calculating average speed, in seconds
      */
     avgSpeedInterval(Convert::toInt, 5 * 60),
+    /**
+     * Speed units for displaying download speed, e.g., "bits" or "bytes"
+     */
+    speedUnits(Function.identity(), "bits"),
     tags(value -> StrUtil.isBlank(value) ? null : StrUtil.split(value, ","));
 
     public final Function<String, ?> converter;

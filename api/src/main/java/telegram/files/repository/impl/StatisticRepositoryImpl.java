@@ -30,7 +30,7 @@ public class StatisticRepositoryImpl extends AbstractSqlRepository implements St
                         """)
                 .mapFrom(StatisticRecord.PARAM_MAPPER)
                 .execute(record)
-                .onSuccess(r -> log.trace("Successfully created statistic record: %s".formatted(record.relatedId())))
+                .onSuccess(_ -> log.trace("Successfully created statistic record: %s".formatted(record.relatedId())))
                 .onFailure(
                         err -> log.error("Failed to create statistic record: %s".formatted(err.getMessage()))
                 )

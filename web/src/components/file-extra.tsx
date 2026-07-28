@@ -32,7 +32,10 @@ function FileName({ file, ellipsis }: FileExtraProps) {
     return null;
   }
   return (
-    <SpoiledWrapper hasSensitiveContent={file.hasSensitiveContent} className="h-5">
+    <SpoiledWrapper
+      hasSensitiveContent={file.hasSensitiveContent}
+      className="h-5"
+    >
       <p className="flex items-center gap-2">
         <Mountain className="h-4 w-4 flex-shrink-0" />
         <span
@@ -53,7 +56,10 @@ function FileCaption({ file, rowHeight, ellipsis }: FileExtraProps) {
     return null;
   }
   return (
-    <SpoiledWrapper hasSensitiveContent={file.hasSensitiveContent} className="h-5">
+    <SpoiledWrapper
+      hasSensitiveContent={file.hasSensitiveContent}
+      className="h-5"
+    >
       <Tooltip>
         <TooltipTrigger>
           <div className="flex items-center gap-2">
@@ -90,7 +96,10 @@ function FilePath({ file, ellipsis, rowHeight }: FileExtraProps) {
     return null;
   }
   return (
-    <SpoiledWrapper hasSensitiveContent={file.hasSensitiveContent} className="h-5">
+    <SpoiledWrapper
+      hasSensitiveContent={file.hasSensitiveContent}
+      className="h-5"
+    >
       <Tooltip>
         <TooltipTrigger>
           <div className="flex items-center gap-2 text-sm">

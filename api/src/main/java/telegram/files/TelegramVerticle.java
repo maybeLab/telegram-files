@@ -24,11 +24,13 @@ import org.jooq.lambda.tuple.Tuple2;
 import telegram.files.repository.*;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 public class TelegramVerticle extends AbstractVerticle {
@@ -56,6 +58,10 @@ public class TelegramVerticle extends AbstractVerticle {
     private AvgSpeed avgSpeed = new AvgSpeed();
 
     private long avgSpeedPersistenceTimerId;
+
+    private long downloadStatusReconciliationTimerId;
+
+    private volatile TdApi.ConnectionState lastConnectionState;
 
     private long lastFileEventTime;
 
@@ -96,11 +102,13 @@ public class TelegramVerticle extends AbstractVerticle {
         telegramUpdateHandler.setOnFileDownloadsUpdated(this::onFileDownloadsUpdated);
         telegramUpdateHandler.setOnChatUpdated(telegramChats::onChatUpdated);
         telegramUpdateHandler.setOnMessageReceived(this::onMessageReceived);
+        telegramUpdateHandler.setOnConnectionStateUpdated(this::onConnectionStateUpdated);
 
         client.initialize(telegramUpdateHandler, this::handleException, this::handleException);
         Future.all(initEventConsumer(), initAvgSpeed())
-                .compose(r -> this.enableProxy(this.proxyName))
-                .onSuccess(r -> startPromise.complete())
+                .compose(_ -> this.enableProxy(this.proxyName))
+                .compose(_ -> this.initDownloadStatusReconciliation())
+                .onSuccess(_ -> startPromise.complete())
                 .onFailure(startPromise::fail);
     }
 
@@ -111,8 +119,12 @@ public class TelegramVerticle extends AbstractVerticle {
     }
 
     public Future<Void> close(boolean needDelete) {
+        if (downloadStatusReconciliationTimerId != 0) {
+            vertx.cancelTimer(downloadStatusReconciliationTimerId);
+            downloadStatusReconciliationTimerId = 0;
+        }
         return client.execute(new TdApi.Close())
-                .onSuccess(r -> {
+                .onSuccess(_ -> {
                     log.info("[%s] Telegram account closed".formatted(this.getRootId()));
                     this.needDelete = needDelete;
                 })
@@ -181,6 +193,7 @@ public class TelegramVerticle extends AbstractVerticle {
         if (offline) {
             return FileRecordRetriever.getFiles(chatId, filter);
         } else {
+            long messageThreadId = Convert.toLong(filter.get("messageThreadId"), 0L);
             TdApi.SearchChatMessages searchChatMessages = new TdApi.SearchChatMessages();
             searchChatMessages.chatId = chatId;
             searchChatMessages.query = filter.get("search");
@@ -188,12 +201,15 @@ public class TelegramVerticle extends AbstractVerticle {
             searchChatMessages.offset = Convert.toInt(filter.get("offset"), 0);
             searchChatMessages.limit = Convert.toInt(filter.get("limit"), 20);
             searchChatMessages.filter = TdApiHelp.getSearchMessagesFilter(filter.get("type"));
-            searchChatMessages.messageThreadId = Convert.toLong(filter.get("messageThreadId"), 0L);
+            searchChatMessages.topicId = messageThreadId > 0 ? new TdApi.MessageTopicThread(messageThreadId) : null;
 
             return (Objects.equals(filter.get("downloadStatus"), FileRecord.DownloadStatus.idle.name()) ?
                     this.getIdleChatFiles(searchChatMessages, 0) :
                     client.execute(searchChatMessages))
-                    .compose(t -> TelegramConverter.convertFiles(this.telegramRecord.id(), t));
+                    .compose(t -> {
+                        preloadThumbnails(t);
+                        return TelegramConverter.convertFiles(this.telegramRecord.id(), t);
+                    });
         }
     }
 
@@ -235,8 +251,8 @@ public class TelegramVerticle extends AbstractVerticle {
                                 new TdApi.SearchMessagesFilterDocument())
                         .map(filter -> client.execute(
                                                 new TdApi.GetChatMessageCount(chatId,
+                                                        null,
                                                         filter,
-                                                        0,
                                                         false)
                                         )
                                         .map(count -> new JsonObject()
@@ -304,7 +320,7 @@ public class TelegramVerticle extends AbstractVerticle {
                     if (file.local != null) {
                         if (file.local.isDownloadingCompleted) {
                             return syncFileDownloadStatus(file, message, messageThreadInfo)
-                                    .compose(r -> DataVerticle.fileRepository.getByUniqueId(file.remote.uniqueId));
+                                    .compose(_ -> DataVerticle.fileRepository.getByUniqueId(file.remote.uniqueId));
                         }
                         if (file.local.isDownloadingActive) {
                             return Future.failedFuture("File is downloading");
@@ -362,6 +378,55 @@ public class TelegramVerticle extends AbstractVerticle {
                         log.debug("[%s] Download thumbnail: %s".formatted(this.getRootId(), thumbnailRecord.uniqueId()));
                     }
                 });
+    }
+
+    /**
+     * Eagerly downloads the lightweight thumbnails for the given messages so previews are crisp
+     * while browsing, without having to download the full media. Fire-and-forget: already
+     * downloaded thumbnails are skipped by {@link #downloadThumbnail}.
+     */
+    private static final int MAX_PRELOAD_THUMBNAILS = 30;
+
+    private static final int PRELOAD_THUMBNAIL_CONCURRENCY = 3;
+
+    private void preloadThumbnails(TdApi.FoundChatMessages foundChatMessages) {
+        if (foundChatMessages == null || foundChatMessages.messages == null || telegramRecord == null) {
+            return;
+        }
+        // Collect at most MAX_PRELOAD_THUMBNAILS thumbnail records for this page, then download them
+        // with bounded concurrency, so opening large pages or fast scrolling can't burst TDLib, the
+        // DB and websocket with one download per message.
+        List<FileRecord> thumbnails = new ArrayList<>();
+        for (TdApi.Message message : foundChatMessages.messages) {
+            if (thumbnails.size() >= MAX_PRELOAD_THUMBNAILS) {
+                break;
+            }
+            FileRecord thumbnailRecord = TdApiHelp.getFileHandler(message)
+                    .map(fileHandler -> fileHandler.convertThumbnailRecord(telegramRecord.id()))
+                    .orElse(null);
+            if (thumbnailRecord != null) {
+                thumbnails.add(thumbnailRecord);
+            }
+        }
+        if (thumbnails.isEmpty()) {
+            return;
+        }
+        AtomicInteger index = new AtomicInteger(0);
+        for (int i = 0; i < Math.min(PRELOAD_THUMBNAIL_CONCURRENCY, thumbnails.size()); i++) {
+            preloadNextThumbnail(thumbnails, index);
+        }
+    }
+
+    private void preloadNextThumbnail(List<FileRecord> thumbnails, AtomicInteger index) {
+        int i = index.getAndIncrement();
+        if (i >= thumbnails.size()) {
+            return;
+        }
+        FileRecord thumbnailRecord = thumbnails.get(i);
+        downloadThumbnail(thumbnailRecord.chatId(), thumbnailRecord.messageId(), thumbnailRecord)
+                .onFailure(err -> log.debug("[%s] Preload thumbnail failed for %s: %s"
+                        .formatted(getRootId(), thumbnailRecord.uniqueId(), err.getMessage())))
+                .onComplete(_ -> preloadNextThumbnail(thumbnails, index));
     }
 
     public Future<Void> cancelDownload(Integer fileId) {
@@ -453,7 +518,7 @@ public class TelegramVerticle extends AbstractVerticle {
                     return Future.succeededFuture(file);
                 })
                 .compose(file -> DataVerticle.fileRepository.deleteByUniqueId(uniqueId).map(file))
-                .onSuccess(file -> sendEvent(EventPayload.build(EventPayload.TYPE_FILE_STATUS, new JsonObject()
+                .onSuccess(_ -> sendEvent(EventPayload.build(EventPayload.TYPE_FILE_STATUS, new JsonObject()
                         .put("fileId", fileId)
                         .put("uniqueId", uniqueId)
                         .put("removed", true)
@@ -591,13 +656,11 @@ public class TelegramVerticle extends AbstractVerticle {
         if (StrUtil.isBlank(toggleProxyName) && StrUtil.isNotBlank(this.proxyName)) {
             // disable proxy
             return client.execute(new TdApi.DisableProxy())
-                    .compose(r -> {
+                    .compose(_ -> {
                         this.proxyName = null;
                         if (this.telegramRecord != null) {
                             return DataVerticle.telegramRepository.update(this.telegramRecord.withProxy(null))
-                                    .onSuccess(telegramRecord -> {
-                                        this.telegramRecord = telegramRecord;
-                                    })
+                                    .onSuccess(telegramRecord -> this.telegramRecord = telegramRecord)
                                     .mapEmpty();
                         }
                         return Future.succeededFuture();
@@ -666,6 +729,9 @@ public class TelegramVerticle extends AbstractVerticle {
         if ("completed".equals(fileUpdated.getString("downloadStatus"))) {
             DataVerticle.fileRepository.getByUniqueId(file.remote.uniqueId)
                     .compose(mainFileRecord -> {
+                        if (mainFileRecord != null) {
+                            statusData.put("type", mainFileRecord.type());
+                        }
                         if (mainFileRecord != null && mainFileRecord.thumbnailUniqueId() != null) {
                             return FileRecordRetriever.getThumbnails(List.of(mainFileRecord))
                                     .map(thumbnailMap -> {
@@ -682,9 +748,7 @@ public class TelegramVerticle extends AbstractVerticle {
                         }
                         return Future.succeededFuture(statusData);
                     })
-                    .onSuccess(finalStatusData -> {
-                        sendEvent(EventPayload.build(EventPayload.TYPE_FILE_STATUS, finalStatusData));
-                    })
+                    .onSuccess(finalStatusData -> sendEvent(EventPayload.build(EventPayload.TYPE_FILE_STATUS, finalStatusData)))
                     .onFailure(err -> {
                         // 如果获取缩略图失败，仍然发送基本状态信息
                         log.error("Failed to get thumbnail info for file: %s, error: %s".formatted(file.remote.uniqueId, err.getMessage()));
@@ -720,6 +784,36 @@ public class TelegramVerticle extends AbstractVerticle {
         log.error(e);
     }
 
+    private Future<Void> cleanupOldVerticle(String oldRootPath) {
+        if (oldRootPath.equals(this.rootPath)) {
+            return Future.succeededFuture();
+        }
+        Optional<TelegramVerticle> found = TelegramVerticles.getAll().stream()
+                .filter(v -> v != this && oldRootPath.equals(v.rootPath))
+                .findFirst();
+        if (found.isEmpty()) {
+            return Future.succeededFuture();
+        }
+        TelegramVerticle old = found.get();
+        log.info("[%s] Replacing stale verticle at path: %s".formatted(getRootId(), oldRootPath));
+        String deployId = old.deploymentID();
+        if (deployId == null) {
+            // Not deployed; just drop it from the registry.
+            TelegramVerticles.remove(old);
+            return Future.succeededFuture();
+        }
+        // Undeploy first; only drop it from the registry once undeploy succeeds. A failed undeploy
+        // must not leave a still-running verticle that is no longer tracked/manageable.
+        return vertx.undeploy(deployId)
+                .onSuccess(_ -> TelegramVerticles.remove(old))
+                .recover(e -> {
+                    log.warn("[%s] Could not undeploy stale verticle, keeping it registered: %s"
+                            .formatted(getRootId(), e.getMessage()));
+                    return Future.succeededFuture();
+                })
+                .mapEmpty();
+    }
+
     private void handleSaveAvgSpeed() {
         if (!authorized || telegramRecord == null) return;
         AvgSpeed.SpeedStats speedStats = avgSpeed.getSpeedStats();
@@ -745,7 +839,7 @@ public class TelegramVerticle extends AbstractVerticle {
                 .compose(interval -> {
                     if (Objects.equals(interval, avgSpeed.getSpeedStats().interval())) {
                         if (avgSpeedPersistenceTimerId == 0) {
-                            avgSpeedPersistenceTimerId = vertx.setPeriodic(interval * 1000, id -> handleSaveAvgSpeed());
+                            avgSpeedPersistenceTimerId = vertx.setPeriodic(interval * 1000, _ -> handleSaveAvgSpeed());
                         }
                         return Future.succeededFuture();
                     }
@@ -754,7 +848,7 @@ public class TelegramVerticle extends AbstractVerticle {
                     if (avgSpeedPersistenceTimerId != 0) {
                         vertx.cancelTimer(avgSpeedPersistenceTimerId);
                     }
-                    avgSpeedPersistenceTimerId = vertx.setPeriodic(interval * 1000, id -> handleSaveAvgSpeed());
+                    avgSpeedPersistenceTimerId = vertx.setPeriodic(interval * 1000, _ -> handleSaveAvgSpeed());
                     return Future.succeededFuture();
                 });
     }
@@ -766,6 +860,82 @@ public class TelegramVerticle extends AbstractVerticle {
         });
 
         return Future.succeededFuture();
+    }
+
+    private Future<Void> initDownloadStatusReconciliation() {
+        // Set up periodic timer to reconcile download statuses every 30 seconds
+        if (downloadStatusReconciliationTimerId == 0) {
+            downloadStatusReconciliationTimerId = vertx.setPeriodic(30000, _ -> reconcileDownloadStatuses());
+            log.debug("[%s] Download status reconciliation timer initialized".formatted(getRootId()));
+        }
+        return Future.succeededFuture();
+    }
+
+    private void reconcileDownloadStatuses() {
+        if (!authorized || telegramRecord == null) {
+            return;
+        }
+
+        log.trace("[%s] Starting download status reconciliation".formatted(getRootId()));
+
+        DataVerticle.fileRepository.getByDownloadStatus(telegramRecord.id(), FileRecord.DownloadStatus.downloading)
+                .onSuccess(fileRecords -> {
+                    if (fileRecords == null || fileRecords.isEmpty()) {
+                        return;
+                    }
+
+                    log.debug("[%s] Reconciling %d files with 'downloading' status".formatted(getRootId(), fileRecords.size()));
+                    int[] reconciledCount = {0};
+
+                    fileRecords.forEach(fileRecord -> {
+                        client.execute(new TdApi.GetFile(fileRecord.id()))
+                                .onSuccess(file -> {
+                                    if (file.local != null && file.local.isDownloadingCompleted) {
+                                        log.info("[%s] Reconciliation: File completed but not updated in DB: %s".formatted(getRootId(), file.remote.uniqueId));
+                                        reconciledCount[0]++;
+
+                                        DataVerticle.fileRepository.updateDownloadStatus(
+                                                file.id,
+                                                file.remote.uniqueId,
+                                                file.local.path,
+                                                FileRecord.DownloadStatus.completed,
+                                                System.currentTimeMillis()
+                                        ).onSuccess(result -> {
+                                            sendFileStatusHttpEvent(file, result);
+                                            log.debug("[%s] Reconciliation fixed file status: %s".formatted(getRootId(), file.remote.uniqueId));
+                                        });
+                                    }
+                                })
+                                .onFailure(e -> log.trace("[%s] Failed to get file during reconciliation: %s - %s".formatted(getRootId(), fileRecord.uniqueId(), e.getMessage())));
+                    });
+
+                    if (reconciledCount[0] > 0) {
+                        log.info("[%s] Reconciliation completed: fixed %d stuck downloads".formatted(getRootId(), reconciledCount[0]));
+                    }
+                })
+                .onFailure(e -> log.error("[%s] Failed to get downloading files for reconciliation: %s".formatted(getRootId(), e.getMessage())));
+    }
+
+    private void onConnectionStateUpdated(TdApi.ConnectionState connectionState) {
+        this.lastConnectionState = connectionState;
+        log.debug("[%s] Connection state: %s".formatted(getRootId(), connectionState.getClass().getSimpleName()));
+        if (connectionState.getConstructor() == TdApi.ConnectionStateWaitingForNetwork.CONSTRUCTOR) {
+            // Tell TDLib the network is available so it retries connecting instead of waiting indefinitely.
+            client.execute(new TdApi.SetNetworkType(new TdApi.NetworkTypeOther()), true);
+        }
+        sendEvent(EventPayload.build(EventPayload.TYPE_CONNECTION, new JsonObject()
+                .put("state", connectionStateName(connectionState))));
+    }
+
+    private static String connectionStateName(TdApi.ConnectionState state) {
+        return switch (state.getConstructor()) {
+            case TdApi.ConnectionStateReady.CONSTRUCTOR -> "ready";
+            case TdApi.ConnectionStateConnecting.CONSTRUCTOR -> "connecting";
+            case TdApi.ConnectionStateConnectingToProxy.CONSTRUCTOR -> "connectingToProxy";
+            case TdApi.ConnectionStateUpdating.CONSTRUCTOR -> "updating";
+            case TdApi.ConnectionStateWaitingForNetwork.CONSTRUCTOR -> "waitingForNetwork";
+            default -> "unknown";
+        };
     }
 
     private void onAuthorizationStateUpdated(TdApi.AuthorizationState authorizationState) {
@@ -795,15 +965,29 @@ public class TelegramVerticle extends AbstractVerticle {
             case TdApi.AuthorizationStateWaitCode.CONSTRUCTOR:
             case TdApi.AuthorizationStateWaitRegistration.CONSTRUCTOR:
             case TdApi.AuthorizationStateWaitPassword.CONSTRUCTOR:
+            case TdApi.AuthorizationStateWaitPremiumPurchase.CONSTRUCTOR:
+                authorized = false;
                 sendEvent(EventPayload.build(EventPayload.TYPE_AUTHORIZATION, authorizationState));
                 break;
             case TdApi.AuthorizationStateReady.CONSTRUCTOR:
                 authorized = true;
                 if (telegramRecord == null) {
                     client.execute(new TdApi.GetMe())
-                            .compose(user ->
-                                    DataVerticle.telegramRepository.create(new TelegramRecord(user.id, user.firstName, this.rootPath, this.proxyName))
-                            )
+                            .compose(user -> {
+                                TelegramRecord record = new TelegramRecord(user.id, user.firstName, this.rootPath, this.proxyName);
+                                // Check existence explicitly rather than inferring a duplicate-key from the
+                                // exception message (brittle across DB drivers/versions/locales).
+                                return DataVerticle.telegramRepository.getById(user.id)
+                                        .compose(existing -> {
+                                            if (existing == null) {
+                                                return DataVerticle.telegramRepository.create(record);
+                                            }
+                                            // Account already registered (e.g. re-auth into a fresh root):
+                                            // take over by cleaning up the stale verticle, then update the record.
+                                            return cleanupOldVerticle(existing.rootPath())
+                                                    .compose(_ -> DataVerticle.telegramRepository.update(record));
+                                        });
+                            })
                             .onSuccess(o -> {
                                 telegramRecord = o;
                                 log.info("[%s] %s Authorization Ready".formatted(getRootId(), this.telegramRecord.firstName()));
@@ -817,14 +1001,22 @@ public class TelegramVerticle extends AbstractVerticle {
                 telegramChats.loadArchivedChatList();
                 break;
             case TdApi.AuthorizationStateLoggingOut.CONSTRUCTOR:
+                authorized = false;
+                sendEvent(EventPayload.build(EventPayload.TYPE_AUTHORIZATION, authorizationState));
                 break;
             case TdApi.AuthorizationStateClosing.CONSTRUCTOR:
+                authorized = false;
                 break;
             case TdApi.AuthorizationStateClosed.CONSTRUCTOR:
+                authorized = false;
                 if (needDelete) {
                     File root = FileUtil.file(this.rootPath);
                     if (root.exists()) {
                         FileUtil.del(root);
+                    }
+                    if (getId() instanceof Long telegramId) {
+                        DataVerticle.telegramRepository.delete(telegramId)
+                                .onFailure(e -> log.error("[%s] Failed to delete telegram record: %s".formatted(this.getRootId(), e.getMessage())));
                     }
                     log.info("[%s] Telegram account deleted".formatted(this.getRootId()));
                 }
@@ -857,7 +1049,13 @@ public class TelegramVerticle extends AbstractVerticle {
                                 return;
                             }
                             if (downloadStatus == null) {
-                                downloadStatus = FileRecord.DownloadStatus.idle;
+                                // Check if download actually completed even though getDownloadStatus returned null
+                                if (file.local != null && file.local.isDownloadingCompleted) {
+                                    log.debug("[%s] File download completed but getDownloadStatus returned null: %s".formatted(getRootId(), file.remote.uniqueId));
+                                    downloadStatus = FileRecord.DownloadStatus.completed;
+                                } else {
+                                    downloadStatus = FileRecord.DownloadStatus.idle;
+                                }
                             }
                             DataVerticle.fileRepository.updateDownloadStatus(file.id,
                                             file.remote.uniqueId,
@@ -921,7 +1119,7 @@ public class TelegramVerticle extends AbstractVerticle {
                             .withThreadInfo(messageThreadInfo);
 
                     return DataVerticle.fileRepository.create(fileRecord)
-                            .compose(r -> DataVerticle.fileRepository.updateDownloadStatus(
+                            .compose(_ -> DataVerticle.fileRepository.updateDownloadStatus(
                                     file.id,
                                     file.remote.uniqueId,
                                     file.local.path,

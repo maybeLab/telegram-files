@@ -30,11 +30,11 @@ export async function request<T = any>(
   requestInit?: RequestInit,
 ): Promise<T> {
   const defaultHeaders = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
 
   const response = await fetch(`${getApiUrl()}${api}`, {
-    credentials: 'include',
+    credentials: "include",
     headers: {
       ...defaultHeaders,
       ...requestInit?.headers,
@@ -52,7 +52,9 @@ export async function request<T = any>(
     throw new RequestParsedError(responseText);
   }
   if (!response.ok) {
-    throw new Error(data.error ?? `Request failed with status ${response.status}`);
+    throw new Error(
+      data.error ?? `Request failed with status ${response.status}`,
+    );
   }
 
   return data as T;
@@ -62,13 +64,12 @@ export class RequestParsedError extends Error {
   responseText: string;
 
   constructor(responseText: string) {
-    super('Parse JSON Error');
+    super("Parse JSON Error");
     this.responseText = responseText;
   }
 }
 
 export function localStorageProvider() {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const map = new Map<string, any>(
     JSON.parse(localStorage.getItem("telegram-files") ?? "[]"),
   );

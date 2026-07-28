@@ -37,7 +37,7 @@ public class ThumbnailMaintainVerticle extends MaintainVerticle {
     public void start(Promise<Void> startPromise) {
         initEventConsumer();
         super.start(startPromise, this::handleThumbnail);
-        vertx.setPeriodic(5000, id -> this.waitForThumbnailDownload());
+        vertx.setPeriodic(5000, _ -> this.waitForThumbnailDownload());
     }
 
     private void handleThumbnail() {

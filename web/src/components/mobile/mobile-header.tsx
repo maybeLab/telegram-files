@@ -35,9 +35,11 @@ import { Label } from "../ui/label";
 import { Toggle } from "@/components/ui/toggle";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useTelegramChat } from "@/hooks/use-telegram-chat";
+import { useSettings } from "@/hooks/use-settings";
 
 export function MobileHeader() {
   const { accountDownloadSpeed } = useWebsocket();
+  const { settings } = useSettings();
   const [hidden, setHidden] = useState(false);
   const [lastScrollY, setLastScrollY] = useState(0);
 
@@ -74,7 +76,7 @@ export function MobileHeader() {
           {accountDownloadSpeed !== 0 ? (
             <div className="flex items-center gap-2 overflow-hidden text-sm text-muted-foreground">
               <span className="flex-1 text-nowrap">
-                {`${prettyBytes(accountDownloadSpeed, { bits: true })}/s`}
+                {`${prettyBytes(accountDownloadSpeed, { bits: settings?.speedUnits === "bits" })}/s`}
               </span>
               <Download className="h-4 w-4 flex-shrink-0" />
             </div>
@@ -92,14 +94,19 @@ export function MobileHeader() {
 function MenuDrawer() {
   const useTelegramAccountProps = useTelegramAccount();
   const { chat } = useTelegramChat();
-  const { connectionStatus } = useWebsocket();
+  const { connectionStatus, reconnect, telegramConnectionState } =
+    useWebsocket();
   const [layout, setLayout] = useLocalStorage<"detailed" | "gallery">(
     "telegramFileLayout",
     "detailed",
   );
 
   return (
-    <Drawer direction="left">
+    <Drawer
+      direction="left"
+      shouldScaleBackground={true}
+      preventScrollRestoration={true}
+    >
       <DrawerTrigger asChild>
         <Button size="xs" variant="ghost">
           <Ellipsis className="h-4 w-4" />
@@ -170,18 +177,51 @@ function MenuDrawer() {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2 py-4">
-                <Badge
-                  variant={
-                    connectionStatus === "Open" ? "default" : "secondary"
-                  }
-                >
-                  {connectionStatus === "Open" ? (
-                    <ChevronsLeftRightEllipsisIcon className="mr-1 h-4 w-4" />
-                  ) : (
-                    <UnplugIcon className="mr-1 h-4 w-4" />
-                  )}
-                  {connectionStatus}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={
+                      connectionStatus === "Open" ? "default" : "secondary"
+                    }
+                    className={
+                      connectionStatus !== "Open" ? "cursor-pointer" : undefined
+                    }
+                    role={connectionStatus !== "Open" ? "button" : undefined}
+                    tabIndex={connectionStatus !== "Open" ? 0 : undefined}
+                    aria-label={
+                      connectionStatus !== "Open"
+                        ? "Reconnect live updates"
+                        : undefined
+                    }
+                    onClick={
+                      connectionStatus !== "Open" ? reconnect : undefined
+                    }
+                    onKeyDown={
+                      connectionStatus !== "Open"
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              reconnect();
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    {connectionStatus === "Open" ? (
+                      <ChevronsLeftRightEllipsisIcon className="mr-1 h-4 w-4" />
+                    ) : (
+                      <UnplugIcon className="mr-1 h-4 w-4" />
+                    )}
+                    {connectionStatus}
+                  </Badge>
+
+                  {telegramConnectionState &&
+                    telegramConnectionState !== "ready" && (
+                      <Badge variant="secondary">
+                        <UnplugIcon className="mr-1 h-4 w-4" />
+                        Telegram: {telegramConnectionState}
+                      </Badge>
+                    )}
+                </div>
 
                 <ThemeToggleButton />
                 <SettingsDialog />

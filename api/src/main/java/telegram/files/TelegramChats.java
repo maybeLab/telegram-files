@@ -61,7 +61,7 @@ public class TelegramChats {
             if (!haveFullMainChatList) {
                 // send LoadChats request if there are some unknown chats and have not enough known chats
                 client.execute(new TdApi.LoadChats(new TdApi.ChatListMain(), 100))
-                        .onSuccess(object -> {
+                        .onSuccess(_ -> {
                             // chats had already been received through updates, let's retry request
                             loadMainChatList();
                         })
@@ -82,7 +82,7 @@ public class TelegramChats {
             if (!haveFullArchivedChatList) {
                 // send LoadChats request if there are some unknown chats and have not enough known chats
                 client.execute(new TdApi.LoadChats(new TdApi.ChatListArchive(), 100))
-                        .onSuccess(object -> {
+                        .onSuccess(_ -> {
                             // chats had already been received through updates, let's retry request
                             loadArchivedChatList();
                         })

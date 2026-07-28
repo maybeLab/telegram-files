@@ -121,8 +121,8 @@ export default {
         progress: "var(--tw-progress-width)",
       },
       padding: {
-        'safe-bottom': 'env(safe-area-inset-bottom)',
-      }
+        "safe-bottom": "env(safe-area-inset-bottom)",
+      },
     },
   },
   plugins: [tailwindcss_animate],

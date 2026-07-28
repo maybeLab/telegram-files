@@ -37,6 +37,7 @@ export function EmptyState({
   message,
   onSelectAccount,
 }: EmptyStateProps) {
+  const isMobile = useIsMobile();
   if (message) {
     return (
       <div className="flex flex-col items-center">
@@ -56,11 +57,17 @@ export function EmptyState({
         {hasAccounts ? (
           <>
             <TelegramIcon className="mb-4 h-16 w-16 text-muted-foreground" />
-            <h2 className="mb-2 text-2xl font-semibold">Select an Account</h2>
-            <p className="mb-4 max-w-md text-muted-foreground">
-              Choose a Telegram account to view and manage your files. You can
-              add more accounts using the button below.
-            </p>
+            {!isMobile && (
+              <>
+                <h2 className="mb-2 text-2xl font-semibold">
+                  Select an Account
+                </h2>
+                <p className="mb-4 max-w-md text-muted-foreground">
+                  Choose a Telegram account to view and manage your files. You
+                  can add more accounts using the button below.
+                </p>
+              </>
+            )}
           </>
         ) : (
           <>

@@ -58,12 +58,12 @@ public class HttpVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) {
         initHttpServer()
-                .compose(r -> initTelegramVerticles())
-                .compose(r -> AutomationsHolder.INSTANCE.init())
-                .compose(r -> initAutoDownloadVerticle())
-                .compose(r -> initTransferVerticle())
-                .compose(r -> initPreloadMessageVerticle())
-                .compose(r -> initEventConsumer())
+                .compose(_ -> initTelegramVerticles())
+                .compose(_ -> AutomationsHolder.INSTANCE.init())
+                .compose(_ -> initAutoDownloadVerticle())
+                .compose(_ -> initTransferVerticle())
+                .compose(_ -> initPreloadMessageVerticle())
+                .compose(_ -> initEventConsumer())
                 .onSuccess(startPromise::complete)
                 .onFailure(startPromise::fail);
     }
@@ -90,7 +90,7 @@ public class HttpVerticle extends AbstractVerticle {
         return vertx.createHttpServer(options)
                 .requestHandler(initRouter())
                 .listen()
-                .onSuccess(server -> log.info("API server started on port " + port))
+                .onSuccess(_ -> log.info("API server started on port " + port))
                 .onFailure(err -> log.error("Failed to start API server: %s".formatted(err.getMessage())))
                 .mapEmpty();
     }
@@ -184,8 +184,8 @@ public class HttpVerticle extends AbstractVerticle {
                         return;
                     }
                     Throwable throwable = ctx.failure();
-                    log.error("route: %s statusCode: %d".formatted(
-                            ctx.currentRoute().getName(),
+                    log.trace("route: %s, statusCode: %d".formatted(
+                            ctx.request().path(),
                             statusCode), throwable);
                     HttpServerResponse response = ctx.response();
                     response.setStatusCode(statusCode)
@@ -267,7 +267,7 @@ public class HttpVerticle extends AbstractVerticle {
                         unboundClients.remove(sessionId);
                     }
 
-                    long timerId = vertx.setPeriodic(30000, id -> {
+                    long timerId = vertx.setPeriodic(30000, _ -> {
                         if (!ws.isClosed()) {
                             ws.writePing(Buffer.buffer("👀"));
                             log.trace("Ping Client: %s".formatted(sessionId));
@@ -275,7 +275,7 @@ public class HttpVerticle extends AbstractVerticle {
                     });
 
                     ws.exceptionHandler(throwable -> log.error("WebSocket error: %s".formatted(throwable.getMessage())));
-                    ws.closeHandler(e -> {
+                    ws.closeHandler(_ -> {
                         clients.remove(sessionId);
                         sessionTelegramVerticles.remove(sessionId);
                         vertx.cancelTimer(timerId);
@@ -335,7 +335,11 @@ public class HttpVerticle extends AbstractVerticle {
     private void handleTelegramCreate(RoutingContext ctx) {
         String sessionId = ctx.session().id();
         TelegramVerticle telegramVerticle = sessionTelegramVerticles.get(sessionId);
-        if (telegramVerticle != null && !telegramVerticle.authorized) {
+        boolean isClosedOrClosing = telegramVerticle != null &&
+                telegramVerticle.lastAuthorizationState != null &&
+                (telegramVerticle.lastAuthorizationState.getConstructor() == TdApi.AuthorizationStateClosed.CONSTRUCTOR ||
+                        telegramVerticle.lastAuthorizationState.getConstructor() == TdApi.AuthorizationStateClosing.CONSTRUCTOR);
+        if (telegramVerticle != null && !telegramVerticle.authorized && !isClosedOrClosing) {
             ctx.json(new JsonObject()
                     .put("id", telegramVerticle.getId())
                     .put("lastState", telegramVerticle.lastAuthorizationState)
@@ -350,7 +354,7 @@ public class HttpVerticle extends AbstractVerticle {
         sessionTelegramVerticles.put(sessionId, newTelegramVerticle);
         TelegramVerticles.add(newTelegramVerticle);
         vertx.deployVerticle(newTelegramVerticle)
-                .onSuccess(id -> ctx.json(new JsonObject()
+                .onSuccess(_ -> ctx.json(new JsonObject()
                         .put("id", newTelegramVerticle.getId())
                         .put("lastState", newTelegramVerticle.lastAuthorizationState)
                 ))
@@ -363,7 +367,7 @@ public class HttpVerticle extends AbstractVerticle {
             return;
         }
         telegramVerticle.close(true)
-                .onSuccess(r -> {
+                .onSuccess(_ -> {
                     TelegramVerticles.remove(telegramVerticle);
                     sessionTelegramVerticles.entrySet().removeIf(e -> e.getValue().equals(telegramVerticle));
                     ctx.end();
@@ -594,7 +598,7 @@ public class HttpVerticle extends AbstractVerticle {
         }
 
         telegramVerticle.cancelDownload(fileId)
-                .onSuccess(r -> ctx.end())
+                .onSuccess(_ -> ctx.end())
                 .onFailure(ctx::fail);
     }
 
@@ -610,7 +614,7 @@ public class HttpVerticle extends AbstractVerticle {
         }
 
         telegramVerticle.togglePauseDownload(fileId, isPaused)
-                .onSuccess(r -> ctx.end())
+                .onSuccess(_ -> ctx.end())
                 .onFailure(ctx::fail);
     }
 
@@ -629,7 +633,7 @@ public class HttpVerticle extends AbstractVerticle {
         }
 
         telegramVerticle.removeFile(fileId, uniqueId)
-                .onSuccess(r -> ctx.end())
+                .onSuccess(_ -> ctx.end())
                 .onFailure(ctx::fail);
     }
 
@@ -690,7 +694,7 @@ public class HttpVerticle extends AbstractVerticle {
             ctx.fail(400);
             return;
         }
-        handleFileMultiple(ctx, (telegramVerticle, file) -> {
+        handleFileMultiple(ctx, (_, file) -> {
             String uniqueId = file.getString("uniqueId");
             if (StrUtil.isBlank(uniqueId)) {
                 return Future.failedFuture("Invalid parameters");
@@ -740,7 +744,7 @@ public class HttpVerticle extends AbstractVerticle {
         }
         JsonObject params = ctx.body().asJsonObject();
         telegramVerticle.updateAutoSettings(Convert.toLong(chatId), params)
-                .onSuccess(r -> ctx.end())
+                .onSuccess(_ -> ctx.end())
                 .onFailure(ctx::fail);
     }
 
@@ -770,7 +774,7 @@ public class HttpVerticle extends AbstractVerticle {
         JsonObject params = ctx.body().asJsonObject();
         String tags = params.getString("tags");
         DataVerticle.fileRepository.updateTags(uniqueId, tags)
-                .onSuccess(r -> ctx.end())
+                .onSuccess(_ -> ctx.end())
                 .onFailure(ctx::fail);
     }
 

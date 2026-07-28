@@ -1,7 +1,7 @@
 import { useWebsocket } from "@/hooks/use-websocket";
-import {useEffect, useMemo, useState} from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WebSocketMessageType } from "@/lib/websocket-types";
-import type {TDFile, TelegramFile} from "@/lib/types";
+import type { TDFile, TelegramFile } from "@/lib/types";
 import { env } from "@/env";
 import { useDebounce } from "use-debounce";
 

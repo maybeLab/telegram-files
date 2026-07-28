@@ -45,7 +45,7 @@ const DraggableContent = ({
       {...attributes}
       className={cn(
         `fixed select-none`,
-        isDragging && "touch-none opacity-80 cursor-grabbing",
+        isDragging && "cursor-grabbing touch-none opacity-80",
         !isDragging && "touch-auto",
         className,
       )}

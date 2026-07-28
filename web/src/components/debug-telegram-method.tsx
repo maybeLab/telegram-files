@@ -49,7 +49,7 @@ export default function DebugTelegramMethod() {
   });
   const [, copyToClipboard] = useCopyToClipboard();
   const [method, setMethod] = useState<string>("");
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
   const [parameters, setParameters] = useState<any>({});
   const [parametersJson, setParametersJson] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -67,6 +67,7 @@ export default function DebugTelegramMethod() {
   });
 
   // 使用 useMemo 缓存过滤后的方法列表
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredMethods = useMemo(() => {
     if (!methodData?.methods || isMethodsLoading) return [];
 
@@ -113,7 +114,6 @@ export default function DebugTelegramMethod() {
   const handleExecute = async () => {
     try {
       await triggerMethod({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         data: parameters,
         method,
       });

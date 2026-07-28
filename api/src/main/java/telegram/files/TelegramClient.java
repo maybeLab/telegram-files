@@ -71,7 +71,7 @@ public class TelegramClient {
     public <R extends TdApi.Object> Future<R> execute(TdApi.Function<R> method, long timeoutMs, Vertx vertx) {
         Promise<R> promise = Promise.promise();
 
-        long timerId = vertx.setTimer(timeoutMs, id -> {
+        long timerId = vertx.setTimer(timeoutMs, _ -> {
             if (!promise.future().isComplete()) {
                 promise.fail(new TimeoutException("Operation timed out after " + timeoutMs + " ms"));
             }
