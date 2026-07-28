@@ -207,7 +207,7 @@ public class TelegramVerticle extends AbstractVerticle {
                     this.getIdleChatFiles(searchChatMessages, 0) :
                     client.execute(searchChatMessages))
                     .compose(t -> {
-                        preloadThumbnails(t);
+                        preloadThumbnails(t.messages);
                         return TelegramConverter.convertFiles(this.telegramRecord.id(), t);
                     });
         }
@@ -276,13 +276,16 @@ public class TelegramVerticle extends AbstractVerticle {
                     }
                     return FileRecordRetriever.getAlbumMessages(this.telegramRecord.id(), messageLinkInfo.message);
                 })
-                .compose(messages -> TelegramConverter.convertFiles(this.telegramRecord.id(), messages)
-                        .map(files -> new JsonObject()
-                                .put("files", files)
-                                .put("count", files.size())
-                                .put("size", files.size())
-                                .put("nextFromMessageId", 0L) // No next message ID for link parsing
-                        ));
+                .compose(messages -> {
+                    preloadThumbnails(messages);
+                    return TelegramConverter.convertFiles(this.telegramRecord.id(), messages)
+                            .map(files -> new JsonObject()
+                                    .put("files", files)
+                                    .put("count", files.size())
+                                    .put("size", files.size())
+                                    .put("nextFromMessageId", 0L) // No next message ID for link parsing
+                            );
+                });
     }
 
     public Future<Tuple2<String, String>> loadPreview(String uniqueId) {
@@ -389,15 +392,15 @@ public class TelegramVerticle extends AbstractVerticle {
 
     private static final int PRELOAD_THUMBNAIL_CONCURRENCY = 3;
 
-    private void preloadThumbnails(TdApi.FoundChatMessages foundChatMessages) {
-        if (foundChatMessages == null || foundChatMessages.messages == null || telegramRecord == null) {
+    private void preloadThumbnails(TdApi.Message[] messages) {
+        if (messages == null || telegramRecord == null) {
             return;
         }
         // Collect at most MAX_PRELOAD_THUMBNAILS thumbnail records for this page, then download them
         // with bounded concurrency, so opening large pages or fast scrolling can't burst TDLib, the
         // DB and websocket with one download per message.
         List<FileRecord> thumbnails = new ArrayList<>();
-        for (TdApi.Message message : foundChatMessages.messages) {
+        for (TdApi.Message message : messages) {
             if (thumbnails.size() >= MAX_PRELOAD_THUMBNAILS) {
                 break;
             }
