@@ -7,7 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GHCR_REPO: ghcr.io/${{ github.repository }}
+  GHCR_REPO: ghcr.io/maybelab/telegram-files
 
 permissions:
   contents: read
@@ -23,7 +23,7 @@ jobs:
           - runner: ubuntu-latest
             platform: linux/amd64
             platform_tag: linux-amd64
-          - runner: [ self-hosted, linux, ARM64 ]
+          - runner: ubuntu-24.04-arm
             platform: linux/arm64
             platform_tag: linux-arm64
     steps:
